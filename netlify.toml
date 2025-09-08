@@ -1,1 +1,11 @@
+# netlify.toml
+[build]
+publish = "."
+functions = "netlify/functions"
+
+# (optional, handy if you ever call /api/*)
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/:splat"
+status = 200
 
