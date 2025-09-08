@@ -1,1 +1,112 @@
+<script>
+function todayIST() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
+}
+
+function escapeHtml(x){ 
+  x = (x ?? '').toString();
+  return x.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+
+async function renderFeed(rows){
+  const f = el('feed');
+  f.innerHTML = '';
+  for (const r of rows) {
+    const d = document.createElement('div');
+    d.className = 'card';
+    d.innerHTML = `
+      <div><strong>${escapeHtml(r.user_email||'')}</strong> — ${escapeHtml(r.text||'')}</div>
+      ${r.ai_suggestion ? `<div class='mt8 mono small'>AI → ${escapeHtml(JSON.stringify(r.ai_suggestion))}</div>
+      <div class='mt8'><button class='confirm' data-id='${r.id}'>Confirm expense</button></div>` : ''}
+    `;
+    f.appendChild(d);
+  }
+  // Attach confirm handlers
+  document.querySelectorAll('button.confirm').forEach(btn => {
+    btn.onclick = async () => {
+      const id = Number(btn.dataset.id);
+      const { data: m, error: me } = await sb.from('messages').select('*').eq('id', id).maybeSingle();
+      if (me) return alert(me.message);
+      if (!m?.ai_suggestion) return;
+
+      const e = m.ai_suggestion;
+      const { error: ie } = await sb.from('expenses').insert({
+        user_id: m.user_id,
+        user_email: m.user_email,
+        group_code: m.group_code,
+        title: e.title,
+        amount: Number(e.amount||0),
+        currency: e.currency||'INR',
+        category: e.category||'Misc',
+        spent_at: e.spent_at || todayIST(),
+        raw: m.text
+      });
+      if (ie) return alert(ie.message);
+
+      await sb.from('messages').update({ ai_suggestion: null }).eq('id', id);
+      alert('Saved expense');
+      await loadFeed();
+    };
+  });
+}
+
+el('send').onclick = async () => {
+  const { data: { user }, error: ue } = await sb.auth.getUser();
+  if (ue) return alert(ue.message);
+  if (!user) return alert('Login first');
+
+  const text = el('message').value.trim();
+  if (!text) return;
+
+  const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  const group_code = prof?.group_code || 'FAMILY1';
+
+  // 1) Save message
+  const { data: msgRow, error } = await sb.from('messages').insert({
+    user_id: user.id,
+    user_email: user.email,
+    group_code,
+    text
+  }).select().maybeSingle();
+  if (error) return alert(error.message);
+
+  // 2) Ask serverless AI to parse it
+  const r = await fetch('/.netlify/functions/classify', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text })
+  });
+  if (!r.ok) return alert('Classify failed');
+  const sug = await r.json();
+
+  // 3) Save AI suggestion on the message
+  const { error: ue2 } = await sb.from('messages').update({ ai_suggestion: sug }).eq('id', msgRow.id);
+  if (ue2) return alert(ue2.message);
+
+  el('message').value='';
+  await loadFeed();
+};
+
+el('ask').onclick = async () => {
+  const q = el('question').value.trim();
+  if (!q) return;
+  const group_code = window.__GROUP__ || 'FAMILY1';
+
+  const r = await fetch('/.netlify/functions/query', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ question: q, group_code })
+  });
+  if (!r.ok) return alert('Query failed');
+  const ans = await r.json();
+
+  const totalNum = Number(ans.total ?? 0);
+  el('answer').innerHTML = `<div class='card'>Total (${ans.period}, category=${ans.category}) = <strong>${Number.isFinite(totalNum) ? totalNum.toFixed(2) : ans.total}</strong></div>`;
+};
+
+init();
+</script>
 
