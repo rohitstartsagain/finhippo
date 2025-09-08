@@ -12,10 +12,9 @@ function jsonHeaders() {
   return { 'Content-Type': 'application/json', ...corsHeaders() };
 }
 
-// IMPORTANT: service role key so the function can read through RLS
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY // server-only
 );
 
 export async function handler(event) {
@@ -24,6 +23,10 @@ export async function handler(event) {
   }
 
   try {
+    if (!process.env.OPENAI_API_KEY || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return { statusCode: 500, headers: jsonHeaders(), body: JSON.stringify({ error: 'Missing server env vars' }) };
+    }
+
     if (event.httpMethod !== 'POST') {
       return { statusCode: 405, headers: jsonHeaders(), body: JSON.stringify({ error: 'Method Not Allowed' }) };
     }
@@ -33,7 +36,6 @@ export async function handler(event) {
       return { statusCode: 400, headers: jsonHeaders(), body: JSON.stringify({ error: 'Missing question/group_code' }) };
     }
 
-    // Ask OpenAI to turn NL -> tiny JSON spec
     const sys = `You convert finance questions into a JSON spec.
 Fields: period ('last_month'|'this_month'|'all_time'), metric ('sum'), field ('amount'),
 filter_category (optional free text), answer_style ('short').`;
@@ -48,11 +50,11 @@ filter_category (optional free text), answer_style ('short').`;
         response_format: { type: 'json_object' }
       })
     });
+
     const aiJson = await ai.json();
     let spec = {};
     try { spec = JSON.parse(aiJson?.choices?.[0]?.message?.content || '{}'); } catch { spec = {}; }
 
-    // Resolve dates
     const today = new Date();
     const firstThisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const firstLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -62,7 +64,6 @@ filter_category (optional free text), answer_style ('short').`;
     if (spec.period === 'last_month') { from = firstLastMonth; to = endLastMonth; }
     else if (spec.period === 'this_month') { from = firstThisMonth; to = today; }
 
-    // Build Supabase query (server-side)
     let q = supabase
       .from('expenses')
       .select('amount, category, title, spent_at')
@@ -76,8 +77,8 @@ filter_category (optional free text), answer_style ('short').`;
 
     if (spec.filter_category) {
       const term = `%${spec.filter_category}%`;
-      // match either category or title to user text (e.g., "dominoes")
-      q = q.or(`ilike.category.${term},ilike.title.${term}`);
+      // ✅ correct Supabase `.or()` syntax
+      q = q.or(`category.ilike.${term},title.ilike.${term}`);
     }
 
     const { data, error } = await q;
