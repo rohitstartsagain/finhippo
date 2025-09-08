@@ -84,12 +84,23 @@ function escapeHtml(x){ x=(x??'').toString();
 async function loadFeed(){
   const { data: { user } } = await sb.auth.getUser();
   if (!user) { el('feed').innerHTML='<div class="small">Login first</div>'; return; }
+
   const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
-  const group_code = prof?.group_code || window.__GROUP__;
-  const { data, error } = await sb.from('messages').select('*').eq('group_code', group_code).order('id',{ascending:false}).limit(50);
+  if (!prof) return;
+
+  window.__GROUP__ = prof.group_code || 'FAMILY1';   // ✅ keep group in sync
+
+  const group_code = window.__GROUP__;
+  const { data, error } = await sb.from('messages')
+    .select('*')
+    .eq('group_code', group_code)
+    .order('id', { ascending:false })
+    .limit(50);
+
   if (error) { el('feed').innerHTML=escapeHtml(error.message); return; }
   renderFeed(data||[]);
 }
+
 
 function renderFeed(rows){
   const f = el('feed'); f.innerHTML='';
