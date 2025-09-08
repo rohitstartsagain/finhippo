@@ -126,42 +126,55 @@ function renderChat(rows, myId){
 
   for (const m of rows){
     const mine = m.user_id === myId;
-    const row = document.createElement('div');
-    row.className = 'row-chat ' + (mine ? 'me' : 'them');
 
-    const bubble = document.createElement('div');
-    bubble.className = 'bubble ' + (mine ? 'me' : 'them');
-    bubble.innerHTML = `${escapeHtml(m.text || '')}`;
+    // 1) Human bubble (me or partner)
+    {
+      const row = document.createElement('div');
+      row.className = 'row-chat ' + (mine ? 'me' : 'them');
 
-    // Left side: show avatar for partner/AI
-    if (!mine){
-      const av = document.createElement('div');
-      av.className = 'avatar';
-      av.textContent = initials(m.user_email || 'AI');
-      row.appendChild(av);
+      if (!mine){
+        const av = document.createElement('div');
+        av.className = 'avatar';
+        av.textContent = initials(m.user_email || 'P');
+        row.appendChild(av);
+      }
+
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble ' + (mine ? 'me' : 'them');
+      bubble.innerHTML = `${escapeHtml(m.text || '')}`;
+      row.appendChild(bubble);
+
+      cont.appendChild(row);
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = `${m.user_email||'anon'} • ${new Date(m.inserted_at).toLocaleString()}`;
+      cont.appendChild(meta);
     }
 
-    // If AI suggestion exists and not confirmed, show inline AI card (left side)
-    if (m.ai_suggestion && !mine){
+    // 2) AI bubble (left) when suggestion exists
+    if (m.ai_suggestion){
       const e = m.ai_suggestion;
-      const card = document.createElement('div');
-      card.className = 'ai-card';
-      card.innerHTML = `
-        <div class="title">Finhippo suggestion</div>
-        <div class="kvs">"${escapeHtml(e.title||'')}" — ${Number(e.amount||0).toFixed(2)} ${escapeHtml(e.currency||'INR')} · ${escapeHtml(e.category||'Misc')} · ${escapeHtml(e.spent_at||todayIST())}</div>
-        <div class="ai-actions"><button class="confirm" data-id="${m.id}">Confirm expense</button></div>
-      `;
-      bubble.appendChild(card);
+      const rowAI = document.createElement('div');
+      rowAI.className = 'row-chat them';
+
+      const avAI = document.createElement('div');
+      avAI.className = 'avatar';
+      avAI.textContent = 'AI';
+      rowAI.appendChild(avAI);
+
+      const bubbleAI = document.createElement('div');
+      bubbleAI.className = 'bubble them';
+      bubbleAI.innerHTML = `
+        <div class="ai-card">
+          <div class="title">Got it.</div>
+          <div class="kvs">"${escapeHtml(e.title||'')}" — ${Number(e.amount||0).toFixed(2)} ${escapeHtml(e.currency||'INR')}
+            · ${escapeHtml(e.category||'Misc')} · ${escapeHtml(e.spent_at||todayIST())}</div>
+          <div class="ai-actions"><button class="confirm" data-id="${m.id}">Confirm expense</button></div>
+        </div>`;
+      rowAI.appendChild(bubbleAI);
+
+      cont.appendChild(rowAI);
     }
-
-    row.appendChild(bubble);
-    cont.appendChild(row);
-
-    // meta line
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    meta.textContent = `${m.user_email||'anon'} • ${new Date(m.inserted_at).toLocaleString()}`;
-    cont.appendChild(meta);
   }
 
   // Confirm handlers
@@ -171,7 +184,6 @@ function renderChat(rows, myId){
       const { data: m, error: me }=await sb.from('messages').select('*').eq('id',id).maybeSingle();
       if(me) return alert(me.message);
       if(!m?.ai_suggestion) return;
-
       const e=m.ai_suggestion;
       const { error }=await sb.from('expenses').insert({
         user_id:m.user_id, user_email:m.user_email, group_code:m.group_code,
@@ -184,7 +196,6 @@ function renderChat(rows, myId){
     };
   });
 
-  // Auto-scroll to bottom
   cont.scrollTop = cont.scrollHeight;
 }
 
