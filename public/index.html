@@ -4,63 +4,84 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FinHippo</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin:20px; background:#0e1117; color:#e5e7eb; }
-    h1 { margin-bottom:20px; }
-    input, textarea, button { font:inherit; padding:8px 10px; border-radius:6px; border:1px solid #333; background:#111827; color:#e5e7eb; }
-    button { cursor:pointer; }
-    .row { margin:12px 0; display:flex; gap:8px; flex-wrap:wrap; }
-    .card { background:#111827; border:1px solid #222; border-radius:8px; padding:12px; margin-top:16px; }
-    .mono { font-family: ui-monospace, monospace; font-size:13px; }
-    .small { font-size:12px; color:#9ca3af; }
-    .mt8 { margin-top:8px; }
-  </style>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg:#0e1117; --panel:#111827; --muted:#9ca3af; --border:#222; --me:#2563eb; --meText:#fff; --them:#1f2937; --ai:#0b6b4b;
+    }
+    body { font-family: system-ui, sans-serif; margin:0; background:var(--bg); color:#e5e7eb; }
+    header { display:flex; align-items:center; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border); position:sticky; top:0; background:var(--bg); z-index:1; }
+    header .gc { font-size:12px; color:var(--muted); padding:2px 8px; border:1px solid var(--border); border-radius:999px; }
+    main { max-width:960px; margin:0 auto; padding:16px; }
+    h3 { margin:0 0 8px; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin:10px 0; }
+    input, textarea, button { font:inherit; padding:10px 12px; border-radius:8px; border:1px solid var(--border); background:#0b1220; color:#e5e7eb; }
+    textarea { width:100%; min-height:48px; }
+    button { cursor:pointer; }
+    .small { font-size:12px; color:var(--muted); }
+
+    /* Chat */
+    .chat { display:flex; flex-direction:column; gap:10px; padding:12px; height:52vh; min-height:360px; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; }
+    .bubble { max-width:70%; padding:10px 12px; border-radius:14px; line-height:1.35; position:relative; word-break:break-word; }
+    .row-chat { display:flex; gap:8px; align-items:flex-end; }
+    .row-chat.me { justify-content:flex-end; }
+    .row-chat.them { justify-content:flex-start; }
+    .bubble.me { background:var(--me); color:var(--meText); border-top-right-radius:4px; }
+    .bubble.them { background:var(--them); border-top-left-radius:4px; }
+    .avatar { width:28px; height:28px; border-radius:50%; background:#243042; display:flex; align-items:center; justify-content:center; font-size:12px; color:#cbd5e1; border:1px solid var(--border); }
+    .meta { font-size:11px; color:var(--muted); margin:2px 6px; }
+    .ai-card { margin-top:8px; border:1px dashed #2a2f3a; padding:8px; border-radius:8px; font-size:13px; background:#0e1726; }
+    .ai-card .title { font-weight:600; }
+    .ai-card .kvs { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    .ai-actions { display:flex; gap:8px; margin-top:8px; }
+    .ai-actions button { padding:6px 10px; }
+  </style>
 </head>
 <body>
-  <h1>💬 FinHippo</h1>
+  <header>
+    <strong>👨‍👩‍👧 Family Expenses</strong>
+    <span id="gc" class="gc"></span>
+  </header>
 
-  <div class="card">
-    <h3>Invite yourself</h3>
-    <div class="row">
-      <input id="email" type="email" placeholder="you@example.com" />
-      <button id="sendLink">Send Magic Link</button>
-      <button id="refreshSession">Refresh</button>
+  <main>
+    <!-- Auth / Profile -->
+    <div class="card">
+      <h3>Invite & Profile</h3>
+      <div class="row">
+        <input id="email" type="email" placeholder="you@example.com" />
+        <button id="sendLink">Send Magic Link</button>
+        <button id="refreshSession">Refresh</button>
+      </div>
+      <div class="row">
+        <input id="name" placeholder="Your name" />
+        <input id="group" placeholder="Group code (e.g. FAMILY1)" />
+        <button id="saveProfile">Save Profile</button>
+      </div>
+      <div class="small" id="whoami"></div>
     </div>
-    <div class="small">Open the link from your email, then hit Refresh.</div>
-  </div>
 
-  <div class="card">
-    <h3>Save Profile</h3>
-    <div class="row">
-      <input id="name" placeholder="Your name" />
-      <input id="group" placeholder="Group code (e.g. FAMILY1)" />
-      <button id="saveProfile">Save</button>
+    <!-- Chat -->
+    <div class="row" style="margin-top:16px">
+      <div style="flex:1">
+        <div id="chat" class="chat"></div>
+        <div class="row">
+          <textarea id="message" placeholder='Type a message like: "Paid 450 for pizza at OvenStory"'></textarea>
+          <button id="send">Send</button>
+        </div>
+      </div>
+      <div style="width:320px; display:flex; flex-direction:column; gap:12px;">
+        <div class="card">
+          <h3>Ask AI</h3>
+          <div class="row">
+            <input id="question" placeholder='e.g. "How much on entertainment last month?"' style="flex:1" />
+            <button id="ask">Ask</button>
+          </div>
+          <div id="answer" class="small" style="margin-top:8px"></div>
+        </div>
+      </div>
     </div>
-    <div class="small" id="whoami"></div>
-  </div>
-
-  <div class="card">
-    <h3>Add a message</h3>
-    <div class="row">
-      <textarea id="message" rows="2" placeholder='e.g. "Paid 450 for pizza at OvenStory"'></textarea>
-      <button id="send">Send</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>Feed</h3>
-    <div id="feed"></div>
-  </div>
-
-  <div class="card">
-    <h3>Ask AI</h3>
-    <div class="row">
-      <input id="question" placeholder='e.g. "How much on entertainment last month?"' />
-      <button id="ask">Ask</button>
-    </div>
-    <div id="answer" class="mt8"></div>
-  </div>
+  </main>
 
 <script>
 /* ===== CONFIG — fill these ===== */
@@ -73,66 +94,101 @@ const el = (id) => document.getElementById(id);
 window.__GROUP__ = 'FAMILY1';
 
 function todayIST() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit'
-  }).format(new Date());
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
 }
-function escapeHtml(x){ x=(x??'').toString();
-  return x.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
-}
+function escapeHtml(x){ x=(x??'').toString(); return x.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#039;"}[m])); }
+function initials(email='?'){ const n=(email.split('@')[0]||'?').replace(/[^a-z0-9]/gi,''); return n.slice(0,2).toUpperCase(); }
 
 async function loadFeed(){
   const { data: { user } } = await sb.auth.getUser();
-  if (!user) { el('feed').innerHTML='<div class="small">Login first</div>'; return; }
+  if (!user) { el('chat').innerHTML='<div class="small">Login first (send magic link above)</div>'; el('gc').textContent=''; return; }
 
   const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
-  if (!prof) return;
+  if (!prof) { el('gc').textContent=''; return; }
 
-  window.__GROUP__ = prof.group_code || 'FAMILY1';   // ✅ keep group in sync
+  window.__GROUP__ = prof.group_code || 'FAMILY1';   // keep group in sync for this session
+  el('gc').textContent = window.__GROUP__;
 
-  const group_code = window.__GROUP__;
   const { data, error } = await sb.from('messages')
     .select('*')
-    .eq('group_code', group_code)
-    .order('id', { ascending:false })
-    .limit(50);
+    .eq('group_code', window.__GROUP__)
+    .order('id', { ascending:true })  // chronological for chat
+    .limit(200);
 
-  if (error) { el('feed').innerHTML=escapeHtml(error.message); return; }
-  renderFeed(data||[]);
+  if (error) { el('chat').innerHTML = `<div class="small">${escapeHtml(error.message)}</div>`; return; }
+  renderChat(data || [], user.id);
 }
 
+function renderChat(rows, myId){
+  const cont = el('chat');
+  cont.innerHTML='';
+  if (!rows.length){ cont.innerHTML='<div class="small">No messages yet — say hi 👋</div>'; return; }
 
-function renderFeed(rows){
-  const f = el('feed'); f.innerHTML='';
-  if (!rows.length) { f.innerHTML='<div class="small">No messages yet</div>'; return; }
-  for (const r of rows){
-    const d=document.createElement('div');
-    d.className='card';
-    d.innerHTML=`
-      <div><strong>${escapeHtml(r.user_email||'')}</strong> — ${escapeHtml(r.text||'')}</div>
-      ${r.ai_suggestion ? `<div class='mt8 mono small'>AI → ${escapeHtml(JSON.stringify(r.ai_suggestion))}</div>
-      <div class='mt8'><button class='confirm' data-id='${r.id}'>Confirm expense</button></div>`:''}
-    `;
-    f.appendChild(d);
+  for (const m of rows){
+    const mine = m.user_id === myId;
+    const row = document.createElement('div');
+    row.className = 'row-chat ' + (mine ? 'me' : 'them');
+
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble ' + (mine ? 'me' : 'them');
+    bubble.innerHTML = `${escapeHtml(m.text || '')}`;
+
+    // Left side: show avatar for partner/AI
+    if (!mine){
+      const av = document.createElement('div');
+      av.className = 'avatar';
+      av.textContent = initials(m.user_email || 'AI');
+      row.appendChild(av);
+    }
+
+    // If AI suggestion exists and not confirmed, show inline AI card (left side)
+    if (m.ai_suggestion && !mine){
+      const e = m.ai_suggestion;
+      const card = document.createElement('div');
+      card.className = 'ai-card';
+      card.innerHTML = `
+        <div class="title">Finhippo suggestion</div>
+        <div class="kvs">"${escapeHtml(e.title||'')}" — ${Number(e.amount||0).toFixed(2)} ${escapeHtml(e.currency||'INR')} · ${escapeHtml(e.category||'Misc')} · ${escapeHtml(e.spent_at||todayIST())}</div>
+        <div class="ai-actions"><button class="confirm" data-id="${m.id}">Confirm expense</button></div>
+      `;
+      bubble.appendChild(card);
+    }
+
+    row.appendChild(bubble);
+    cont.appendChild(row);
+
+    // meta line
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${m.user_email||'anon'} • ${new Date(m.inserted_at).toLocaleString()}`;
+    cont.appendChild(meta);
   }
-  document.querySelectorAll('button.confirm').forEach(btn=>{
+
+  // Confirm handlers
+  cont.querySelectorAll('button.confirm').forEach(btn=>{
     btn.onclick=async()=>{
       const id=Number(btn.dataset.id);
-      const { data: m }=await sb.from('messages').select('*').eq('id',id).maybeSingle();
-      if (!m?.ai_suggestion) return;
+      const { data: m, error: me }=await sb.from('messages').select('*').eq('id',id).maybeSingle();
+      if(me) return alert(me.message);
+      if(!m?.ai_suggestion) return;
+
       const e=m.ai_suggestion;
       const { error }=await sb.from('expenses').insert({
         user_id:m.user_id, user_email:m.user_email, group_code:m.group_code,
         title:e.title, amount:Number(e.amount||0), currency:e.currency||'INR',
         category:e.category||'Misc', spent_at:e.spent_at||todayIST(), raw:m.text
       });
-      if (error) return alert(error.message);
-      await sb.from('messages').update({ai_suggestion:null}).eq('id',id);
-      alert('Saved expense'); await loadFeed();
+      if(error) return alert(error.message);
+      await sb.from('messages').update({ ai_suggestion: null }).eq('id', id);
+      await loadFeed();
     };
   });
+
+  // Auto-scroll to bottom
+  cont.scrollTop = cont.scrollHeight;
 }
 
+/* ----- Actions ----- */
 el('sendLink').onclick=async()=>{
   const email=el('email').value.trim(); if(!email)return alert('Enter email');
   const { error }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo:window.location.origin } });
@@ -143,8 +199,10 @@ el('refreshSession').onclick=init;
 el('saveProfile').onclick=async()=>{
   const { data:{user} }=await sb.auth.getUser(); if(!user)return alert('Login first');
   const name=el('name').value.trim(); const group=el('group').value.trim()||'FAMILY1';
-  const { error }=await sb.from('profiles').upsert({id:user.id,email:user.email,display_name:name,group_code:group});
-  if(error)return alert(error.message); window.__GROUP__=group; alert('Profile saved'); await loadFeed();
+  const { error }=await sb.from('profiles').upsert({ id:user.id, email:user.email, display_name:name, group_code:group });
+  if(error)return alert(error.message);
+  window.__GROUP__=group; el('gc').textContent=group;
+  alert('Profile saved'); await loadFeed();
 };
 
 el('send').onclick=async()=>{
@@ -153,22 +211,27 @@ el('send').onclick=async()=>{
   const { data: prof }=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
   const group_code=prof?.group_code||window.__GROUP__;
   const { data: msgRow, error }=await sb.from('messages').insert({
-    user_id:user.id,user_email:user.email,group_code,text
+    user_id:user.id, user_email:user.email, group_code, text
   }).select().maybeSingle();
   if(error)return alert(error.message);
-  const r=await fetch('/.netlify/functions/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
-  if(!r.ok)return alert('Classify failed'); const sug=await r.json();
-  await sb.from('messages').update({ai_suggestion:sug}).eq('id',msgRow.id);
+
+  // Ask serverless AI to parse
+  const r=await fetch('/.netlify/functions/classify',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text }) });
+  if(!r.ok) return alert('Classify failed');
+  const sug=await r.json();
+
+  await sb.from('messages').update({ ai_suggestion: sug }).eq('id', msgRow.id);
   el('message').value=''; await loadFeed();
 };
 
 el('ask').onclick=async()=>{
   const q=el('question').value.trim(); if(!q)return;
   const group_code=window.__GROUP__||'FAMILY1';
-  const r=await fetch('/.netlify/functions/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,group_code})});
-  if(!r.ok)return alert('Query failed'); const ans=await r.json();
+  const r=await fetch('/.netlify/functions/query',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ question:q, group_code }) });
+  if(!r.ok) return alert('Query failed');
+  const ans=await r.json();
   const totalNum=Number(ans.total??0);
-  el('answer').innerHTML=`<div class='card'>Total (${ans.period}, category=${ans.category}) = <strong>${Number.isFinite(totalNum)?totalNum.toFixed(2):ans.total}</strong></div>`;
+  el('answer').innerHTML=`Total (${ans.period}, category=${ans.category}) = <strong>${Number.isFinite(totalNum)?totalNum.toFixed(2):ans.total}</strong>`;
 };
 
 async function init(){
