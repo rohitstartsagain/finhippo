@@ -1,112 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FinHippo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin:20px; background:#0e1117; color:#e5e7eb; }
+    h1 { margin-bottom:20px; }
+    input, textarea, button { font:inherit; padding:8px 10px; border-radius:6px; border:1px solid #333; background:#111827; color:#e5e7eb; }
+    button { cursor:pointer; }
+    .row { margin:12px 0; display:flex; gap:8px; flex-wrap:wrap; }
+    .card { background:#111827; border:1px solid #222; border-radius:8px; padding:12px; margin-top:16px; }
+    .mono { font-family: ui-monospace, monospace; font-size:13px; }
+    .small { font-size:12px; color:#9ca3af; }
+    .mt8 { margin-top:8px; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>💬 FinHippo</h1>
+
+  <div class="card">
+    <h3>Invite yourself</h3>
+    <div class="row">
+      <input id="email" type="email" placeholder="you@example.com" />
+      <button id="sendLink">Send Magic Link</button>
+      <button id="refreshSession">Refresh</button>
+    </div>
+    <div class="small">Open the link from your email, then hit Refresh.</div>
+  </div>
+
+  <div class="card">
+    <h3>Save Profile</h3>
+    <div class="row">
+      <input id="name" placeholder="Your name" />
+      <input id="group" placeholder="Group code (e.g. FAMILY1)" />
+      <button id="saveProfile">Save</button>
+    </div>
+    <div class="small" id="whoami"></div>
+  </div>
+
+  <div class="card">
+    <h3>Add a message</h3>
+    <div class="row">
+      <textarea id="message" rows="2" placeholder='e.g. "Paid 450 for pizza at OvenStory"'></textarea>
+      <button id="send">Send</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Feed</h3>
+    <div id="feed"></div>
+  </div>
+
+  <div class="card">
+    <h3>Ask AI</h3>
+    <div class="row">
+      <input id="question" placeholder='e.g. "How much on entertainment last month?"' />
+      <button id="ask">Ask</button>
+    </div>
+    <div id="answer" class="mt8"></div>
+  </div>
+
 <script>
+/* ===== CONFIG — fill these ===== */
+const SUPABASE_URL = 'https://dxoazprtjqvurlmhywrn.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4b2F6cHJ0anF2dXJsbWh5d3JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczMDYyMDcsImV4cCI6MjA3Mjg4MjIwN30.Fp8aTiFc9ul5KpD4txFZTBHPCQJWiaF5Z6Az9zjmNHc';
+/* =============================== */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const el = (id) => document.getElementById(id);
+window.__GROUP__ = 'FAMILY1';
+
 function todayIST() {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric', month: '2-digit', day: '2-digit'
+    timeZone: 'Asia/Kolkata', year:'numeric', month:'2-digit', day:'2-digit'
   }).format(new Date());
 }
-
-function escapeHtml(x){ 
-  x = (x ?? '').toString();
-  return x.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+function escapeHtml(x){ x=(x??'').toString();
+  return x.replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;","&gt;":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 }
 
-async function renderFeed(rows){
-  const f = el('feed');
-  f.innerHTML = '';
-  for (const r of rows) {
-    const d = document.createElement('div');
-    d.className = 'card';
-    d.innerHTML = `
+async function loadFeed(){
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { el('feed').innerHTML='<div class="small">Login first</div>'; return; }
+  const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  const group_code = prof?.group_code || window.__GROUP__;
+  const { data, error } = await sb.from('messages').select('*').eq('group_code', group_code).order('id',{ascending:false}).limit(50);
+  if (error) { el('feed').innerHTML=escapeHtml(error.message); return; }
+  renderFeed(data||[]);
+}
+
+function renderFeed(rows){
+  const f = el('feed'); f.innerHTML='';
+  if (!rows.length) { f.innerHTML='<div class="small">No messages yet</div>'; return; }
+  for (const r of rows){
+    const d=document.createElement('div');
+    d.className='card';
+    d.innerHTML=`
       <div><strong>${escapeHtml(r.user_email||'')}</strong> — ${escapeHtml(r.text||'')}</div>
       ${r.ai_suggestion ? `<div class='mt8 mono small'>AI → ${escapeHtml(JSON.stringify(r.ai_suggestion))}</div>
-      <div class='mt8'><button class='confirm' data-id='${r.id}'>Confirm expense</button></div>` : ''}
+      <div class='mt8'><button class='confirm' data-id='${r.id}'>Confirm expense</button></div>`:''}
     `;
     f.appendChild(d);
   }
-  // Attach confirm handlers
-  document.querySelectorAll('button.confirm').forEach(btn => {
-    btn.onclick = async () => {
-      const id = Number(btn.dataset.id);
-      const { data: m, error: me } = await sb.from('messages').select('*').eq('id', id).maybeSingle();
-      if (me) return alert(me.message);
+  document.querySelectorAll('button.confirm').forEach(btn=>{
+    btn.onclick=async()=>{
+      const id=Number(btn.dataset.id);
+      const { data: m }=await sb.from('messages').select('*').eq('id',id).maybeSingle();
       if (!m?.ai_suggestion) return;
-
-      const e = m.ai_suggestion;
-      const { error: ie } = await sb.from('expenses').insert({
-        user_id: m.user_id,
-        user_email: m.user_email,
-        group_code: m.group_code,
-        title: e.title,
-        amount: Number(e.amount||0),
-        currency: e.currency||'INR',
-        category: e.category||'Misc',
-        spent_at: e.spent_at || todayIST(),
-        raw: m.text
+      const e=m.ai_suggestion;
+      const { error }=await sb.from('expenses').insert({
+        user_id:m.user_id, user_email:m.user_email, group_code:m.group_code,
+        title:e.title, amount:Number(e.amount||0), currency:e.currency||'INR',
+        category:e.category||'Misc', spent_at:e.spent_at||todayIST(), raw:m.text
       });
-      if (ie) return alert(ie.message);
-
-      await sb.from('messages').update({ ai_suggestion: null }).eq('id', id);
-      alert('Saved expense');
-      await loadFeed();
+      if (error) return alert(error.message);
+      await sb.from('messages').update({ai_suggestion:null}).eq('id',id);
+      alert('Saved expense'); await loadFeed();
     };
   });
 }
 
-el('send').onclick = async () => {
-  const { data: { user }, error: ue } = await sb.auth.getUser();
-  if (ue) return alert(ue.message);
-  if (!user) return alert('Login first');
+el('sendLink').onclick=async()=>{
+  const email=el('email').value.trim(); if(!email)return alert('Enter email');
+  const { error }=await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo:window.location.origin } });
+  if(error)alert(error.message);else alert('Magic link sent!');
+};
+el('refreshSession').onclick=init;
 
-  const text = el('message').value.trim();
-  if (!text) return;
+el('saveProfile').onclick=async()=>{
+  const { data:{user} }=await sb.auth.getUser(); if(!user)return alert('Login first');
+  const name=el('name').value.trim(); const group=el('group').value.trim()||'FAMILY1';
+  const { error }=await sb.from('profiles').upsert({id:user.id,email:user.email,display_name:name,group_code:group});
+  if(error)return alert(error.message); window.__GROUP__=group; alert('Profile saved'); await loadFeed();
+};
 
-  const { data: prof } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
-  const group_code = prof?.group_code || 'FAMILY1';
-
-  // 1) Save message
-  const { data: msgRow, error } = await sb.from('messages').insert({
-    user_id: user.id,
-    user_email: user.email,
-    group_code,
-    text
+el('send').onclick=async()=>{
+  const { data:{user} }=await sb.auth.getUser(); if(!user)return alert('Login first');
+  const text=el('message').value.trim(); if(!text)return;
+  const { data: prof }=await sb.from('profiles').select('*').eq('id',user.id).maybeSingle();
+  const group_code=prof?.group_code||window.__GROUP__;
+  const { data: msgRow, error }=await sb.from('messages').insert({
+    user_id:user.id,user_email:user.email,group_code,text
   }).select().maybeSingle();
-  if (error) return alert(error.message);
+  if(error)return alert(error.message);
+  const r=await fetch('/.netlify/functions/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  if(!r.ok)return alert('Classify failed'); const sug=await r.json();
+  await sb.from('messages').update({ai_suggestion:sug}).eq('id',msgRow.id);
+  el('message').value=''; await loadFeed();
+};
 
-  // 2) Ask serverless AI to parse it
-  const r = await fetch('/.netlify/functions/classify', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  if (!r.ok) return alert('Classify failed');
-  const sug = await r.json();
+el('ask').onclick=async()=>{
+  const q=el('question').value.trim(); if(!q)return;
+  const group_code=window.__GROUP__||'FAMILY1';
+  const r=await fetch('/.netlify/functions/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,group_code})});
+  if(!r.ok)return alert('Query failed'); const ans=await r.json();
+  const totalNum=Number(ans.total??0);
+  el('answer').innerHTML=`<div class='card'>Total (${ans.period}, category=${ans.category}) = <strong>${Number.isFinite(totalNum)?totalNum.toFixed(2):ans.total}</strong></div>`;
+};
 
-  // 3) Save AI suggestion on the message
-  const { error: ue2 } = await sb.from('messages').update({ ai_suggestion: sug }).eq('id', msgRow.id);
-  if (ue2) return alert(ue2.message);
-
-  el('message').value='';
+async function init(){
+  const { data:{user} }=await sb.auth.getUser();
+  el('whoami').textContent=user?`Signed in as ${user.email}`:'Not signed in';
   await loadFeed();
-};
-
-el('ask').onclick = async () => {
-  const q = el('question').value.trim();
-  if (!q) return;
-  const group_code = window.__GROUP__ || 'FAMILY1';
-
-  const r = await fetch('/.netlify/functions/query', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ question: q, group_code })
-  });
-  if (!r.ok) return alert('Query failed');
-  const ans = await r.json();
-
-  const totalNum = Number(ans.total ?? 0);
-  el('answer').innerHTML = `<div class='card'>Total (${ans.period}, category=${ans.category}) = <strong>${Number.isFinite(totalNum) ? totalNum.toFixed(2) : ans.total}</strong></div>`;
-};
-
+}
 init();
 </script>
-
+</body>
+</html>
